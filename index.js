@@ -5,17 +5,16 @@ const customParseFormat = require('dayjs/plugin/customParseFormat');
 const isBetween = require('dayjs/plugin/isBetween');
 
 const report = './search-report.csv';
-const startDate = dayjs('2020-01-01');
+const startDate = dayjs('2020-12-01');
 const endDate = dayjs('2020-12-31');
 
 dayjs.extend(customParseFormat);
 dayjs.extend(isBetween);
 
 const hasSearchTerm = (row) => row.field4.length > 1;
-const isDateRange = (row) => {
-  const rowDate = dayjs(row.field2, 'YYYY-MM-DD H:mm:ss');
-  return rowDate.isBetween(startDate, endDate);
-};
+const isDateRange = (row) =>
+  dayjs(row.field2, 'YYYY-MM-DD H:mm:ss').isBetween(startDate, endDate);
+
 const removeHeaderRow = (row) =>
   Object.keys(row).reduce((acc, key, i) => {
     if (i > 0) {
@@ -33,6 +32,7 @@ const formatRow = ({ field1, field2, field3, field4, field5, ...rest }) => {
       const rawValue = rest[key];
       let value = rawValue;
 
+      // CSV strips quotes out of JSON filters list
       if (rawValue.indexOf('"') < 0) {
         // plain value
         value = `"${rawValue}"`;
@@ -42,8 +42,7 @@ const formatRow = ({ field1, field2, field3, field4, field5, ...rest }) => {
         rawValue.indexOf('"') != 0 &&
         rawValue.lastIndexOf('"') != rawValue.length - 1
       ) {
-        // exclude '{"cms":["LMS"]'
-        // include 'products":["red hat certificate system (rhcs)'
+        // contains a quote but doesn't start or end with one and doesn't start with a bracket
         value = `"${rawValue}"`;
       }
       acc.push(value);
@@ -60,7 +59,7 @@ const formatRow = ({ field1, field2, field3, field4, field5, ...rest }) => {
 
   return {
     dateStr: field2,
-    // date: dayjs(field2, 'YYYY-MM-DD H:mm:ss'),
+    // Not needed, date: dayjs(field2, 'YYYY-MM-DD H:mm:ss'),
     term: field4,
     results: field5,
     filters: filtersObj,
@@ -92,8 +91,11 @@ const processData = (json) => {
     .map(formatRow);
   console.log('found', filteredSet.length);
   console.log('errors', errorCount);
-  // console.log(filteredSet);
   console.log('\n----------\n');
+  return filteredSet;
+};
+
+const groupBySearches = (filteredSet) => {
   const groupSet = {};
   filteredSet.forEach((row) => {
     if (groupSet.hasOwnProperty(row.term)) {
@@ -102,10 +104,15 @@ const processData = (json) => {
       groupSet[row.term] = 1;
     }
   });
-
   sortObjectEntries(groupSet, 25).forEach((term) => {
     console.log(`${term}\t${groupSet[term]}`);
   });
+  return groupSet;
 };
 
-csv().fromFile(report).then(processData);
+// TODO - group by users
+// TODO - show common filters
+
+csv()
+  .fromFile(report)
+  .then((json) => groupBySearches(processData(json)));
